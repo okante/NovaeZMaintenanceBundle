@@ -19,6 +19,8 @@ use eZ\Publish\API\Repository\PermissionResolver;
 use eZ\Publish\Core\Base\Exceptions\UnauthorizedException;
 use eZ\Publish\Core\IO\IOServiceInterface;
 use eZ\Publish\Core\MVC\ConfigResolverInterface;
+use EzSystems\PlatformHttpCacheBundle\Handler\ContentTagInterface;
+use EzSystems\PlatformHttpCacheBundle\PurgeClient\PurgeClientInterface;
 use RuntimeException;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\IpUtils;
@@ -65,6 +67,8 @@ class FileHelper
      */
     private $permissionResolver;
 
+    private $purgeClient;
+
     public function __construct(
         IOServiceInterface $binaryFileIOService,
         Filesystem $fileSystem,
@@ -72,6 +76,7 @@ class FileHelper
         ConfigResolverInterface $configResolver,
         TranslatorInterface $translator,
         PermissionResolver $permissionResolver,
+        PurgeClientInterface $purgeClient,
         array $siteaccessList = []
     ) {
         $this->binaryfileIOService = $binaryFileIOService;
@@ -81,6 +86,7 @@ class FileHelper
         $this->translator = $translator;
         $this->permissionResolver = $permissionResolver;
         $this->siteaccessList = $siteaccessList;
+        $this->purgeClient = $purgeClient;
     }
 
     public function existFileCluster(string $siteaccess): bool
@@ -106,7 +112,7 @@ class FileHelper
     {
         if ($this->isMaintenanceModeRunning($siteaccess)) {
             $this->deleteFileCluster($siteaccess);
-
+            $this->handleHttpPurge();
             return true;
         }
 
@@ -115,6 +121,7 @@ class FileHelper
 
     public function maintenanceLock(string $siteaccess): bool
     {
+        $this->handleHttpPurge();
         if ($this->existFileCluster($siteaccess)) {
             return false;
         }
@@ -245,5 +252,10 @@ class FileHelper
         if (!$this->permissionResolver->hasAccess('novamaintenance', 'manage')) {
             throw new UnauthorizedException('novamaintenance', 'manage', []);
         }
+    }
+
+    private function handleHttpPurge()
+    {
+        $this->purgeClient->purge([ContentTagInterface::ALL_TAG]);
     }
 }
